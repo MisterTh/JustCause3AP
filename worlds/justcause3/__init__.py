@@ -2,6 +2,12 @@ from typing import Optional
 
 from BaseClasses import ItemClassification
 from worlds.AutoWorld import World
+from worlds.LauncherComponents import (
+    Component,
+    Type,
+    components,
+    launch_subprocess,
+)
 
 from .Items import (
     JustCause3Item,
@@ -16,6 +22,27 @@ from .Locations import (
 from .Options import JustCause3Options
 from .Regions import create_regions
 from .Rules import set_rules
+
+
+def launch_client(*args: str) -> None:
+    from .Client import launch
+
+    launch_subprocess(launch, name="Just Cause 3 Client", args=args)
+
+
+if not any(
+    component.display_name == "Just Cause 3 Client"
+    for component in components
+):
+    components.append(
+        Component(
+            "Just Cause 3 Client",
+            func=launch_client,
+            component_type=Type.CLIENT,
+            game_name="Just Cause 3",
+            supports_uri=True,
+        )
+    )
 
 
 class JustCause3World(World):

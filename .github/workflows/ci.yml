@@ -23,15 +23,15 @@ jobs:
   python-world:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check out Archipelago test runtime
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ArchipelagoMW/Archipelago
           path: archipelago
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
           cache: pip
@@ -58,7 +58,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/archipelago
         run: python -m pytest -q tests/test_world_generation.py
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: justcause3-apworld
           path: justcause3.apworld
@@ -67,9 +67,9 @@ jobs:
   windows-plugin:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 

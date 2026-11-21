@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cstdint>
 #include <iterator>
+#include <mutex>
 
 namespace {
 
@@ -12,6 +13,7 @@ auto g_live_backend = std::make_shared<jc3ap::LiveGameBackend>();
 jc3ap::GameBridge g_bridge(g_live_backend);
 std::atomic<bool> g_stop_requested{false};
 HANDLE g_worker = nullptr;
+std::mutex g_lifecycle_mutex;
 
 DWORD WINAPI BridgeWorker(void*) {
     if (!g_bridge.Run(g_stop_requested)) {
@@ -23,7 +25,34 @@ DWORD WINAPI BridgeWorker(void*) {
 }  // namespace
 
 extern "C" __declspec(dllexport) BOOL WINAPI
+JC3AP_Initialize() {
+    std::lock_guard lock(g_lifecycle_mutex);
+    if (g_worker != nullptr) {
+        const DWORD status = WaitForSingleObject(g_worker, 0);
+        if (status == WAIT_TIMEOUT) {
+            return TRUE;
+        }
+        if (status != WAIT_OBJECT_0) {
+            OutputDebugStringA(
+                "JC3 AP bridge: could not inspect worker status.\n");
+            return FALSE;
+        }
+        CloseHandle(g_worker);
+        g_worker = nullptr;
+    }
+
+    g_stop_requested.store(false);
+    g_worker = CreateThread(nullptr, 0, BridgeWorker, nullptr, 0, nullptr);
+    if (g_worker == nullptr) {
+        OutputDebugStringA("JC3 AP bridge: could not start worker.\n");
+        return FALSE;
+    }
+    return TRUE;
+}
+
+extern "C" __declspec(dllexport) BOOL WINAPI
 JC3AP_StopBridge() {
+    std::lock_guard lock(g_lifecycle_mutex);
     g_stop_requested.store(true);
     if (g_worker == nullptr) {
         return TRUE;
@@ -81,19 +110,18 @@ JC3AP_OnCollectibleCounterChanged(
         : FALSE;
 }
 
-BOOL WINAPI DllMain(HINSTANCE module, DWORD reason, LPVOID) {
+#ifndef JC3AP_EXTERNAL_DLLMAIN
+BOOL WINAPI DllMain(HINSTANCE module, DWORD reason, LPVOID reserved) {
     if (reason == DLL_PROCESS_ATTACH) {
         DisableThreadLibraryCalls(module);
-        g_worker = CreateThread(nullptr, 0, BridgeWorker, nullptr, 0, nullptr);
-        if (g_worker == nullptr) {
-            OutputDebugStringA("JC3 AP bridge: could not start worker.\n");
-        }
+        JC3AP_Initialize();
     } else if (reason == DLL_PROCESS_DETACH) {
-        g_stop_requested.store(true);
-        if (g_worker != nullptr) {
-            CloseHandle(g_worker);
-            g_worker = nullptr;
+        if (reserved == nullptr) {
+            JC3AP_StopBridge();
+        } else {
+            g_stop_requested.store(true);
         }
     }
     return TRUE;
 }
+#endif

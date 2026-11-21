@@ -11,16 +11,32 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
-add_library(jc3_ap_bridge SHARED
+set(JC3AP_BRIDGE_SOURCES
     game_bridge.cpp
     jc3_live_backend.cpp
     ipc_server.cpp
+)
+
+add_library(jc3_ap_plugin SHARED
+    ${JC3AP_BRIDGE_SOURCES}
     plugin_entry.cpp
 )
 
-target_compile_features(jc3_ap_bridge PRIVATE cxx_std_20)
-target_compile_definitions(jc3_ap_bridge PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
-target_link_libraries(jc3_ap_bridge PRIVATE nlohmann_json::nlohmann_json ws2_32)
+add_library(dinput8 SHARED
+    ${JC3AP_BRIDGE_SOURCES}
+    plugin_entry.cpp
+    dinput8_proxy.cpp
+    dinput8.def
+)
+
+foreach(target jc3_ap_plugin dinput8)
+    target_compile_features(${target} PRIVATE cxx_std_20)
+    target_compile_definitions(${target} PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(
+        ${target} PRIVATE nlohmann_json::nlohmann_json ws2_32)
+endforeach()
+
+target_compile_definitions(dinput8 PRIVATE JC3AP_EXTERNAL_DLLMAIN)
 
 add_executable(jc3_ap_bridge_test_host
     game_bridge.cpp
@@ -33,16 +49,18 @@ target_compile_definitions(jc3_ap_bridge_test_host PRIVATE WIN32_LEAN_AND_MEAN N
 target_link_libraries(jc3_ap_bridge_test_host PRIVATE nlohmann_json::nlohmann_json ws2_32)
 
 if(MSVC)
-    target_compile_options(jc3_ap_bridge PRIVATE /W4 /permissive- /EHsc)
+    target_compile_options(jc3_ap_plugin PRIVATE /W4 /permissive- /EHsc)
+    target_compile_options(dinput8 PRIVATE /W4 /permissive- /EHsc)
     target_compile_options(jc3_ap_bridge_test_host PRIVATE /W4 /permissive- /EHsc)
 endif()
 
-set_target_properties(jc3_ap_bridge PROPERTIES
-    OUTPUT_NAME "jc3_ap_bridge"
-    PREFIX ""
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../build/$<CONFIG>"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../build/$<CONFIG>"
-)
+foreach(target jc3_ap_plugin dinput8)
+    set_target_properties(${target} PROPERTIES
+        PREFIX ""
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../build/$<CONFIG>"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../build/$<CONFIG>"
+    )
+endforeach()
 set_target_properties(jc3_ap_bridge_test_host PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../build/$<CONFIG>"
 )

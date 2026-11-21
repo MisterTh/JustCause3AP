@@ -1,9 +1,10 @@
 # JC3 AP game plugin
 
-`jc3_ap_bridge.dll` is a loopback-only TCP bridge for a supported JC3 mod
-loader. It is not a `dinput8.dll` proxy and does not read or write game memory
-or install hooks. Game actions and state queries are exposed through adapter
-callbacks because this project does not have a verified JC3 loader SDK.
+`jc3_ap_plugin.dll` and `dinput8.dll` are two Windows x64 builds of the
+loopback-only TCP bridge. `jc3_ap_plugin.dll` is for a supported JC3 mod loader;
+`dinput8.dll` is a drop-in DirectInput proxy. Neither reads or writes game
+memory or installs hooks. Game actions and state queries are exposed through
+adapter callbacks because this project does not have a verified JC3 loader SDK.
 
 The bridge listens on `127.0.0.1:54321` and exchanges newline-delimited JSON.
 Set `JC3AP_PORT` before launching the game to change the port.
@@ -55,11 +56,33 @@ py game_plugin/test_bridge.py --mock
 py game_plugin/test_bridge.py --native-host build/Release/jc3_ap_bridge_test_host.exe
 ```
 
-The outputs are under `build/Release/`. Copy the plugin DLL into the
-existing loader's `mods` directory; do not replace the loader's
-`dinput8.dll`. The native host tests persistent duplicate suppression,
-out-of-world deferral, live callback dispatch, status output, and location
-polling.
+The outputs are under `build/Release/`. The native host tests persistent
+duplicate suppression, out-of-world deferral, live callback dispatch, status
+output, and location polling.
+
+## Drop-In Installation
+
+Copy `dinput8.dll` from the Windows x64 release into the game installation
+folder, typically
+`steamapps\common\Just Cause 3\` (the folder containing `JustCause3.exe`).
+The proxy forwards DirectInput exports to the Windows system
+`System32\dinput8.dll` and starts the bridge on a background thread. Remove the
+proxy DLL to disable it. Do not install both this proxy and another
+`dinput8.dll` mod loader in the game folder; they cannot occupy the same file.
+
+Launch the game, then verify the local bridge is responding with:
+
+```powershell
+py game_plugin/test_bridge.py --host 127.0.0.1 --port 54321
+```
+
+The default port can be changed by setting `JC3AP_PORT` before launching the
+game, and the same port must be passed with `--port`. Alternatively, connect
+the Just Cause 3 client through Archipelago; the client uses this bridge, and
+its `/status` command reports the connection state.
+
+For users of an existing mod loader, copy `jc3_ap_plugin.dll` into its `mods`
+directory instead of installing the drop-in proxy.
 
 The AP client is [`Client.py`](../worlds/justcause3/Client.py). It supports
 `/status`, `/check <location name or AP ID>`, and

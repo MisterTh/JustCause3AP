@@ -5,6 +5,7 @@ import asyncio
 import json
 import os
 import re
+import sys
 from collections.abc import Sequence
 from typing import Any
 
@@ -538,8 +539,9 @@ class JustCause3Context(CommonContext):
         await super().shutdown()
 
 
-def launch() -> None:
+def launch(*launch_args: str) -> None:
     parser = get_base_parser(description="Just Cause 3 Archipelago Client")
+    parser.add_argument("--name", default=None, help="Slot Name to connect as.")
 
     def parse_game_port(value: str) -> int:
         try:
@@ -556,12 +558,13 @@ def launch() -> None:
         default=os.environ.get("JC3AP_PORT", GAME_PORT),
         help="JC3 IPC server port (default: 54321).",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(launch_args)
 
     async def main() -> None:
         context = JustCause3Context(
             args.connect, args.password, GAME_HOST, args.game_port
         )
+        context.auth = args.name
         context.server_task = asyncio.create_task(
             server_loop(context), name="AP server loop"
         )
@@ -579,4 +582,4 @@ def launch() -> None:
 
 
 if __name__ == "__main__":
-    launch()
+    launch(*sys.argv[1:])

@@ -1,0 +1,52 @@
+name: Just Cause 3 Windows plugin release
+
+on:
+  push:
+    paths:
+      - "game_plugin/**"
+      - ".github/workflows/build_plugin.yml"
+  pull_request:
+    paths:
+      - "game_plugin/**"
+      - ".github/workflows/build_plugin.yml"
+  workflow_dispatch:
+
+jobs:
+  windows-x64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Configure x64 CMake build
+        run: cmake -S game_plugin -B build/cmake -A x64
+
+      - name: Build Release DLLs and native test host
+        run: >-
+          cmake --build build/cmake --config Release --parallel
+          --target jc3_ap_plugin dinput8 jc3_ap_bridge_test_host
+
+      - name: Test Python bridge and manual tracker
+        run: python game_plugin/test_bridge.py --mock
+
+      - name: Test C++ persistence, world gate, and location polling
+        run: >-
+          python game_plugin/test_bridge.py
+          --native-host build/Release/jc3_ap_bridge_test_host.exe
+
+      - name: Stage Windows x64 release
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build\release-package | Out-Null
+          Copy-Item build\Release\dinput8.dll build\release-package\
+          Copy-Item build\Release\jc3_ap_plugin.dll build\release-package\
+          Copy-Item game_plugin\README.md build\release-package\
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: JustCause3AP-Windows-x64
+          path: build/release-package/*
+          if-no-files-found: error

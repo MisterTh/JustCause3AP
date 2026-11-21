@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 from argparse import Namespace
 
 import pytest
@@ -7,6 +8,7 @@ from BaseClasses import CollectionState, MultiWorld
 from Fill import distribute_items_restrictive
 from worlds import AutoWorldRegister
 from worlds.AutoWorld import call_all
+from worlds.LauncherComponents import Type, components
 
 
 GAME_NAME = "Just Cause 3"
@@ -84,3 +86,32 @@ def test_world_has_no_unimplemented_option_fields() -> None:
         "If JC3 options are added, add named generation presets and logic tests "
         "for every option combination here."
     )
+
+
+def test_client_launcher_registration_and_argument_forwarding(monkeypatch) -> None:
+    world_module = importlib.import_module("worlds.justcause3")
+    matches = [
+        component
+        for component in components
+        if component.display_name == "Just Cause 3 Client"
+    ]
+    assert len(matches) == 1
+    component = matches[0]
+    assert component.type is Type.CLIENT
+    assert component.game_name == GAME_NAME
+    assert component.supports_uri is True
+
+    forwarded = ("--connect", "archipelago.gg:38281", "--name", "TestPlayer")
+    captured = {}
+    monkeypatch.setattr(
+        world_module,
+        "launch_subprocess",
+        lambda func, name=None, args=(): captured.update(
+            func=func, name=name, args=args
+        ),
+    )
+    component.func(*forwarded)
+
+    assert captured["func"].__module__ == "worlds.justcause3.Client"
+    assert captured["name"] == "Just Cause 3 Client"
+    assert captured["args"] == forwarded
