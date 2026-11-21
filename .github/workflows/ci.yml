@@ -1,0 +1,91 @@
+name: Just Cause 3 APWorld and plugin CI
+
+on:
+  push:
+    paths:
+      - "worlds/justcause3/**"
+      - "game_plugin/**"
+      - "scripts/**"
+      - "tests/**"
+      - ".github/workflows/ci.yml"
+      - ".gitignore"
+  pull_request:
+    paths:
+      - "worlds/justcause3/**"
+      - "game_plugin/**"
+      - "scripts/**"
+      - "tests/**"
+      - ".github/workflows/ci.yml"
+      - ".gitignore"
+  workflow_dispatch:
+
+jobs:
+  python-world:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out Archipelago test runtime
+        uses: actions/checkout@v4
+        with:
+          repository: ArchipelagoMW/Archipelago
+          path: archipelago
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: archipelago/requirements.txt
+
+      - name: Install Archipelago and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r archipelago/requirements.txt
+          python -m pip install -r archipelago/ci-requirements.txt
+
+      - name: Verify C++ catalog parity
+        run: python scripts/sync_jc3_catalog.py --check
+
+      - name: Build APWorld archive
+        run: python scripts/build_apworld.py
+
+      - name: Load built APWorld into Archipelago test runtime
+        run: cp justcause3.apworld archipelago/worlds/justcause3.apworld
+
+      - name: Test world generation, fill balance, reachability, and victory
+        env:
+          AP_TEST_WORLDS: justcause3
+          PYTHONPATH: ${{ github.workspace }}/archipelago
+        run: python -m pytest -q tests/test_world_generation.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: justcause3-apworld
+          path: justcause3.apworld
+          if-no-files-found: error
+
+  windows-plugin:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Configure x64 CMake build
+        run: cmake -S game_plugin -B build/cmake -A x64
+
+      - name: Verify generated item and location catalog
+        run: python scripts/sync_jc3_catalog.py --check
+
+      - name: Build DLL and native test host
+        run: cmake --build build/cmake --config Release --parallel
+
+      - name: Test Python bridge and manual tracker
+        run: python game_plugin/test_bridge.py --mock
+
+      - name: Test C++ persistence, world gate, and location polling
+        run: >-
+          python game_plugin/test_bridge.py
+          --native-host build/Release/jc3_ap_bridge_test_host.exe
