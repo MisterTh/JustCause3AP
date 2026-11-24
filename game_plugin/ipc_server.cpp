@@ -9,11 +9,27 @@
 #include <utility>
 
 namespace jc3ap {
+
+const char* BuildTimestamp() noexcept {
+    return __DATE__ " " __TIME__;
+}
+
 namespace {
 
 constexpr std::size_t kMaxLineBytes = 64 * 1024;
 constexpr std::size_t kMaxQueuedEvents = 256;
 constexpr long kSelectTimeoutMicroseconds = 200'000;
+std::string ErrorDescription(const std::string& code) {
+    if (code == "invalid_command") return "The request must include a string cmd.";
+    if (code == "invalid_json") return "The request line is not valid JSON.";
+    if (code == "unknown_command") return "The bridge does not recognize this command.";
+    if (code == "invalid_world_state") return "in_world must be a JSON boolean.";
+    if (code == "invalid_session") return "The session seed and slot must be non-empty strings.";
+    if (code == "state_unavailable") return "The bridge could not load persistent delivery state.";
+    if (code == "memory_commands_disabled") return "Raw memory commands are disabled.";
+    if (code == "handler_failed") return "The bridge command handler failed.";
+    return "Bridge request failed: " + code;
+}
 
 void LogSocketError(const char* operation) {
     char message[160]{};
@@ -169,13 +185,43 @@ bool IpcServer::ServeClient(
                 return false;
             }
 
+            nlohmann::json request;
             nlohmann::json response;
             try {
-                response = handler(nlohmann::json::parse(line));
+                request = nlohmann::json::parse(line);
             } catch (const nlohmann::json::parse_error&) {
-                response = {{"event", "error"}, {"error", "invalid_json"}};
-            } catch (const std::exception&) {
-                response = {{"event", "error"}, {"error", "handler_failed"}};
+                response = {{"event", "error"},
+                            {"error", "invalid_json"},
+                            {"message", ErrorDescription("invalid_json")}};
+            }
+            if (response.is_null()) {
+                try {
+                    response = handler(request);
+                } catch (const std::exception&) {
+                    response = {{"event", "error"},
+                                {"error", "handler_failed"},
+                                {"message", ErrorDescription("handler_failed")}};
+                }
+            }
+            if (!response.is_object()) {
+                response = {{"event", "error"},
+                            {"error", "invalid_response"},
+                            {"message", "The bridge handler returned an invalid response."}};
+            }
+            if (request.is_object() && request.contains("id")) {
+                response["id"] = request["id"];
+            }
+            if (response.value("event", std::string{}) == "error" &&
+                (!response.contains("message") || !response["message"].is_string())) {
+                const std::string code =
+                    response.value("error", std::string("unknown_error"));
+                response["message"] = ErrorDescription(code);
+            }
+            if (request.is_object() && request.contains("cmd") &&
+                request["cmd"].is_string() &&
+                request["cmd"].get<std::string>() == "get_status" &&
+                response.value("event", std::string{}) == "status") {
+                response["build_timestamp"] = BuildTimestamp();
             }
             if (!SendJson(client, response)) {
                 return false;

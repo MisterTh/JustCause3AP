@@ -111,6 +111,11 @@ def build_header() -> str:
     expected_locations = {
         name: location_base + code for name, code in location_names.items()
     }
+    expected_items.update({
+        "Wingsuit Progression": item_base + 89,
+        "Tether Progression": item_base + 90,
+        "FOW Hazard Disabler": item_base + 91,
+    })
     if python_items != expected_items or python_locations != expected_locations:
         raise ValueError("Runtime Items.py/Locations.py IDs differ from source data")
 
@@ -141,6 +146,21 @@ def build_header() -> str:
             name,
             record["category"],
             record["asset_id"],
+        ))
+
+    for name, code, category, game_key in (
+        ("Wingsuit Progression", 89, "wingsuit", "progression:wingsuit"),
+        ("Tether Progression", 90, "tether", "progression:tether"),
+        ("FOW Hazard Disabler", 91, "hazard_disabler", "progression:fow_hazard"),
+    ):
+        if code in seen_item_codes:
+            raise ValueError(f"Progression item code collides: {name}")
+        seen_item_codes.add(code)
+        items.append((
+            item_base + code,
+            name,
+            category,
+            game_key,
         ))
 
     filler_name = "Rebel Supply Drop"

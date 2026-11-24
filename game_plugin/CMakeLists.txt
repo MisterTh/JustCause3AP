@@ -23,20 +23,19 @@ add_library(jc3_ap_plugin SHARED
 )
 
 add_library(dinput8 SHARED
-    ${JC3AP_BRIDGE_SOURCES}
-    plugin_entry.cpp
     dinput8_proxy.cpp
     dinput8.def
 )
+add_dependencies(dinput8 jc3_ap_plugin)
 
 foreach(target jc3_ap_plugin dinput8)
     target_compile_features(${target} PRIVATE cxx_std_20)
     target_compile_definitions(${target} PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
-    target_link_libraries(
-        ${target} PRIVATE nlohmann_json::nlohmann_json ws2_32)
 endforeach()
 
-target_compile_definitions(dinput8 PRIVATE JC3AP_EXTERNAL_DLLMAIN)
+target_compile_definitions(jc3_ap_plugin PRIVATE JC3AP_BUILD_DLL)
+target_link_libraries(
+    jc3_ap_plugin PRIVATE nlohmann_json::nlohmann_json ws2_32)
 
 add_executable(jc3_ap_bridge_test_host
     game_bridge.cpp
