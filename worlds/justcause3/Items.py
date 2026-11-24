@@ -40,6 +40,19 @@ item_table[filler_item_name] = ItemData(
     ITEM_ID_BASE + filler_item_code,
     ItemClassification.filler,
 )
+
+progression_items = {
+    "Wingsuit Progression": ("wingsuit", 89),
+    "Tether Progression": ("tether", 90),
+    "FOW Hazard Disabler": ("hazard_disabler", 91),
+}
+for _name, (_category, _code) in progression_items.items():
+    item_name_to_id[_name] = ITEM_ID_BASE + _code
+    item_table[_name] = ItemData(
+        ITEM_ID_BASE + _code,
+        ItemClassification.progression,
+    )
+
 item_table["Just Cause 3 Victory"] = ItemData(
     None,
     ItemClassification.progression,

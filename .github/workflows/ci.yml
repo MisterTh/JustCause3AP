@@ -37,6 +37,11 @@ jobs:
           cache: pip
           cache-dependency-path: archipelago/requirements.txt
 
+      - name: Install native dependencies for pycairo
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libcairo2-dev pkg-config python3-dev
+
       - name: Install Archipelago and test dependencies
         run: |
           python -m pip install --upgrade pip

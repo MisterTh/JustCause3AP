@@ -13,6 +13,8 @@
 
 namespace jc3ap {
 
+const char* BuildTimestamp() noexcept;
+
 class IpcServer {
 public:
     using Handler = std::function<nlohmann::json(const nlohmann::json&)>;

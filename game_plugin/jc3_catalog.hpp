@@ -15,7 +15,7 @@ struct CatalogEntry {
     std::string_view game_key;
 };
 
-inline constexpr std::array<CatalogEntry, 88> kItemCatalog{{
+inline constexpr std::array<CatalogEntry, 91> kItemCatalog{{
     CatalogEntry{0x4A430001u, "UVK 13", "weapon", "weapon:UVK 13"},
     CatalogEntry{0x4A430002u, "Fire Leech", "weapon", "weapon:Fire Leech"},
     CatalogEntry{0x4A430003u, "Capstone Hydra", "weapon", "weapon:Capstone Hydra"},
@@ -104,6 +104,9 @@ inline constexpr std::array<CatalogEntry, 88> kItemCatalog{{
     CatalogEntry{0x4A430056u, "News Chopper", "vehicle", "vehicle:News Chopper"},
     CatalogEntry{0x4A430057u, "Stria Ghibli 3", "vehicle", "vehicle:Stria Ghibli 3"},
     CatalogEntry{0x4A430058u, "Rebel Supply Drop", "rebel_drop", "rebel_drop:Rebel Supply Drop"},
+    CatalogEntry{0x4A430059u, "Wingsuit Progression", "wingsuit", "progression:wingsuit"},
+    CatalogEntry{0x4A43005Au, "Tether Progression", "tether", "progression:tether"},
+    CatalogEntry{0x4A43005Bu, "FOW Hazard Disabler", "hazard_disabler", "progression:fow_hazard"},
 }};
 
 inline constexpr std::array<CatalogEntry, 304> kLocationCatalog{{

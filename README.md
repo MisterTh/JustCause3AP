@@ -70,6 +70,44 @@ The loopback bridge and loader adapter are documented in
 settlement/collectible state queries remain behind loader callbacks because
 there is no verified supported JC3 SDK or API in this repository yet.
 
+## Learning settlement save records
+
+The read-only save-map workflow can learn which record key and state bits
+change when one AP location is liberated. Keep the same save profile for both
+snapshots, and change only one location between them:
+
+1. In the client, run `/snapshot_save before_agro`.
+2. Liberate only Agro, then run `/snapshot_save after_agro`.
+3. Use the two created snapshot directories to learn the location:
+
+   ```powershell
+   py scripts\diff_jc3_saves.py --learn-location "Settlement: Agro" `
+     --before "save_snapshots\<before-folder>" `
+     --after "save_snapshots\<after-folder>" `
+     --mapping save_snapshots\jc3_settlement_save_map.json
+   ```
+
+The learner writes or updates a JSON map only when exactly one existing
+`settlement_achievement_status` record changes state or one new record
+appears. If multiple records change or appear, it refuses to guess; take a
+cleaner pair of snapshots. Use the exact AP location name (for example,
+`Military Base: Griphon`). Record keys are stable identifiers in the observed
+format; byte offsets can shift as the record list changes, so the saved sample
+offset is evidence only.
+
+To turn learned records into AP checks, start the client with the mapping
+enabled, for example:
+
+```powershell
+py worlds\justcause3\Client.py --settlement-map save_snapshots\jc3_settlement_save_map.json
+```
+
+The client polls the configured save directory read-only and submits mapped
+locations when their learned state bits match. Configure a non-default save
+profile with `--save-directory <profile>` or `JC3AP_SAVE_DIR`. Save-state keys
+and masks are empirical; verify each entry with isolated captures before
+relying on it for a generated seed.
+
 ## Repository history note
 
 The checked project directory had no `.git` metadata or nested Git repository

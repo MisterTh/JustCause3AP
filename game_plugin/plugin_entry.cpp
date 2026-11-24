@@ -1,4 +1,5 @@
 #include "game_bridge.hpp"
+#include "include/jc3_ap_sdk.h"
 
 #include <Windows.h>
 
@@ -69,6 +70,24 @@ JC3AP_StopBridge() {
 }
 
 extern "C" __declspec(dllexport) BOOL WINAPI
+JC3AP_Shutdown() {
+    return JC3AP_StopBridge();
+}
+
+extern "C" __declspec(dllexport) const char* WINAPI
+JC3AP_GetBuildTimestamp() {
+    return jc3ap::BuildTimestamp();
+}
+
+extern "C" __declspec(dllexport) BOOL WINAPI
+JC3AP_RegisterGrantCallback(
+    void* context,
+    jc3ap::LiveGameBackend::GrantCallback callback) {
+    g_live_backend->SetGrantCallback(context, callback);
+    return TRUE;
+}
+
+extern "C" __declspec(dllexport) BOOL WINAPI
 JC3AP_RegisterGameCallbacks(
     const jc3ap::LiveGameBackend::Callbacks* callbacks) {
     if (callbacks == nullptr) {
@@ -108,6 +127,29 @@ JC3AP_OnCollectibleCounterChanged(
                location_id, current, required)
         ? TRUE
         : FALSE;
+}
+
+extern "C" __declspec(dllexport) BOOL WINAPI
+JC3AP_ReportLocationCompleted(std::uint32_t location_id) {
+    return g_bridge.PublishLocationChecked(location_id) ? TRUE : FALSE;
+}
+
+extern "C" __declspec(dllexport) BOOL WINAPI
+JC3AP_ReportLocationByKey(
+    const char* category,
+    const char* game_key) {
+    if (game_key == nullptr) {
+        return FALSE;
+    }
+    for (const jc3ap::CatalogEntry& entry : jc3ap::kLocationCatalog) {
+        if (entry.game_key == game_key &&
+            (category == nullptr || entry.category == category)) {
+            return g_bridge.PublishLocationChecked(entry.ap_id)
+                ? TRUE
+                : FALSE;
+        }
+    }
+    return FALSE;
 }
 
 #ifndef JC3AP_EXTERNAL_DLLMAIN

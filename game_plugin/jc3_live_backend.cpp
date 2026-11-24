@@ -29,7 +29,11 @@ bool MockGameBackend::ApplyItem(
 }
 
 bool MockGameBackend::IsInWorld() const {
-    return true;
+    return in_world_.load();
+}
+
+void MockGameBackend::SetInWorld(bool in_world) {
+    in_world_.store(in_world);
 }
 
 std::string_view MockGameBackend::Mode() const {
@@ -38,6 +42,10 @@ std::string_view MockGameBackend::Mode() const {
 
 std::size_t MockGameBackend::RegisteredCatalogHandlerCount() const {
     return kItemCatalog.size() + kLocationCatalog.size();
+}
+
+bool MockGameBackend::GrantCallbackRegistered() const {
+    return false;
 }
 
 std::vector<std::uint32_t> MockGameBackend::PollCompletedLocations() {
@@ -54,6 +62,12 @@ void LiveGameBackend::SetCallbacks(const Callbacks& callbacks) {
     callbacks_ = callbacks;
 }
 
+void LiveGameBackend::SetGrantCallback(void* context, GrantCallback callback) {
+    std::lock_guard lock(mutex_);
+    grant_context_ = context;
+    grant_callback_ = callback;
+}
+
 void LiveGameBackend::SetInWorld(bool in_world) {
     in_world_.store(in_world);
 }
@@ -68,6 +82,18 @@ std::string_view LiveGameBackend::Mode() const {
 
 std::size_t LiveGameBackend::RegisteredCatalogHandlerCount() const {
     return kItemCatalog.size() + kLocationCatalog.size();
+}
+
+bool LiveGameBackend::GrantCallbackRegistered() const {
+    std::lock_guard lock(mutex_);
+    return grant_callback_ != nullptr ||
+           callbacks_.vehicle_unlock != nullptr ||
+           callbacks_.weapon_unlock != nullptr ||
+           callbacks_.rebel_drop != nullptr ||
+           callbacks_.gear_mod != nullptr ||
+           callbacks_.hazard_disabler != nullptr ||
+           callbacks_.tether_progression != nullptr ||
+           callbacks_.wingsuit_progression != nullptr;
 }
 
 bool LiveGameBackend::ApplyItem(
@@ -90,9 +116,42 @@ bool LiveGameBackend::ApplyItem(
     }
 
     Callbacks callbacks;
+    void* grant_context = nullptr;
+    GrantCallback grant_callback = nullptr;
     {
         std::lock_guard lock(mutex_);
         callbacks = callbacks_;
+        grant_context = grant_context_;
+        grant_callback = grant_callback_;
+    }
+
+    const char* category_name = "unknown";
+    switch (category) {
+        case ItemCategory::VehicleUnlock: category_name = "vehicle_unlock"; break;
+        case ItemCategory::WeaponUnlock: category_name = "weapon_unlock"; break;
+        case ItemCategory::RebelDrop: category_name = "rebel_drop"; break;
+        case ItemCategory::GearMod: category_name = "gear_mod"; break;
+        case ItemCategory::HazardDisabler: category_name = "hazard_disabler"; break;
+        case ItemCategory::TetherProgression: category_name = "tether_progression"; break;
+        case ItemCategory::WingsuitProgression: category_name = "wingsuit_progression"; break;
+        case ItemCategory::Unknown: break;
+    }
+
+    if (grant_callback != nullptr) {
+        if (grant_callback(
+                grant_context,
+                request.delivery_index,
+                entry->ap_id,
+                entry->game_key.data(),
+                entry->name.data(),
+                category_name,
+                request.count) == FALSE) {
+            if (failure_reason != nullptr) {
+                *failure_reason = "game_action_rejected";
+            }
+            return false;
+        }
+        return true;
     }
 
     ApplyCallback callback = nullptr;

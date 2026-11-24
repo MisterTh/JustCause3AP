@@ -152,18 +152,18 @@ std::size_t GameBridge::ProcessPendingGrants() {
     std::size_t processed = 0;
     while (processed < kMaxGrantsPerTick) {
         GrantRequest request;
-        SessionKey key;
+        SessionKey session_key;
         bool already_applied = false;
         {
             std::lock_guard lock(grant_mutex_);
             auto candidate = grant_queue_.end();
             for (auto current = grant_queue_.begin();
                  current != grant_queue_.end(); ++current) {
-                key = {current->seed_name, current->slot_name};
-                if (!LoadNextDeliveryIndex(key, nullptr)) {
+                session_key = {current->seed_name, current->slot_name};
+                if (!LoadNextDeliveryIndex(session_key, nullptr)) {
                     continue;
                 }
-                const std::uint64_t next = next_delivery_index_.at(key);
+                const std::uint64_t next = next_delivery_index_.at(session_key);
                 if (current->delivery_index <= next) {
                     candidate = current;
                     already_applied = current->delivery_index < next;
@@ -199,11 +199,11 @@ std::size_t GameBridge::ProcessPendingGrants() {
             bool notify_failure = false;
             {
                 std::lock_guard lock(grant_mutex_);
-                const auto key = std::make_tuple(
+                const auto grant_identity = std::make_tuple(
                     request.seed_name, request.slot_name,
                     request.delivery_index);
-                in_flight_.erase(key);
-                notify_failure = failure_notified_.insert(key).second;
+                in_flight_.erase(grant_identity);
+                notify_failure = failure_notified_.insert(grant_identity).second;
             }
             if (notify_failure) {
                 server_.Publish(GrantFailedEvent(request, "world_not_loaded"));
@@ -228,11 +228,11 @@ std::size_t GameBridge::ProcessPendingGrants() {
             bool notify_failure = false;
             {
                 std::lock_guard lock(grant_mutex_);
-                const auto key = std::make_tuple(
+                const auto grant_identity = std::make_tuple(
                     request.seed_name, request.slot_name,
                     request.delivery_index);
-                in_flight_.erase(key);
-                notify_failure = failure_notified_.insert(key).second;
+                in_flight_.erase(grant_identity);
+                notify_failure = failure_notified_.insert(grant_identity).second;
             }
             if (notify_failure) {
                 server_.Publish(GrantFailedEvent(
@@ -251,6 +251,7 @@ std::size_t GameBridge::ProcessPendingGrants() {
             if (next != std::numeric_limits<std::uint64_t>::max() &&
                 PersistNextDeliveryIndex(request_key, next + 1)) {
                 next_delivery_index_[request_key] = next + 1;
+                last_applied_index_[request_key] = next;
                 auto queued = std::find_if(
                     grant_queue_.begin(), grant_queue_.end(),
                     [&request](const GrantRequest& candidate) {
@@ -292,6 +293,40 @@ nlohmann::json GameBridge::HandleCommand(const nlohmann::json& request) {
         return {{"event", "pong"},
                 {"game", "JC3"},
                 {"base_addr", "unavailable"}};
+    }
+    if (command == "set_in_world") {
+        if (!request.contains("in_world") ||
+            !request["in_world"].is_boolean()) {
+            return {{"event", "error"}, {"error", "invalid_world_state"}};
+        }
+        backend_->SetInWorld(request["in_world"].get<bool>());
+        return {{"event", "in_world_updated"},
+                {"in_world", backend_->IsInWorld()}};
+    }
+    if (command == "set_session") {
+        if (!request.contains("seed") ||
+            !IsSafeIdentity(request["seed"]) ||
+            !request.contains("slot") ||
+            !IsSafeIdentity(request["slot"]) ||
+            !request.contains("session_id") ||
+            !request["session_id"].is_string()) {
+            return {{"event", "error"}, {"error", "invalid_session"}};
+        }
+        const SessionKey key{
+            request["seed"].get<std::string>(),
+            request["slot"].get<std::string>()};
+        if (request["session_id"].get<std::string>() !=
+            key.first + "/" + key.second) {
+            return {{"event", "error"}, {"error", "invalid_session"}};
+        }
+        std::lock_guard lock(grant_mutex_);
+        active_session_ = key;
+        if (!LoadNextDeliveryIndex(key, nullptr)) {
+            return {{"event", "error"}, {"error", "state_unavailable"}};
+        }
+        return {{"event", "session_updated"},
+                {"session_id", key.first + "/" + key.second},
+                {"delivery_index", next_delivery_index_.at(key)}};
     }
     if (command == "get_status") {
         return GetStatus();
@@ -588,18 +623,31 @@ nlohmann::json GameBridge::GetStatus() {
     std::lock_guard lock(grant_mutex_);
     nlohmann::json active_session = nullptr;
     nlohmann::json delivery_index = nullptr;
+    nlohmann::json last_applied_index = nullptr;
     if (active_session_.has_value()) {
         const SessionKey& key = *active_session_;
         active_session = key.first + "/" + key.second;
         if (LoadNextDeliveryIndex(key, nullptr)) {
             delivery_index = next_delivery_index_.at(key);
         }
+        const auto last = last_applied_index_.find(key);
+        if (last != last_applied_index_.end()) {
+            last_applied_index = last->second;
+        }
     }
+    const std::size_t catalog_entries =
+        kItemCatalog.size() + kLocationCatalog.size();
     return {{"event", "status"},
             {"backend_mode", std::string(backend_->Mode())},
             {"in_world", backend_->IsInWorld()},
+            {"grant_callback_registered",
+             backend_->GrantCallbackRegistered()},
             {"active_session_id", active_session},
+            {"session_id", active_session},
             {"delivery_index", delivery_index},
+            {"last_applied_index", last_applied_index},
+            {"pending_queue_size", grant_queue_.size()},
+            {"catalog_entries", catalog_entries},
             {"registered_catalog_handlers",
              backend_->RegisteredCatalogHandlerCount()},
             {"item_catalog_entries", kItemCatalog.size()},

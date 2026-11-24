@@ -51,8 +51,10 @@ public:
         ItemCategory category,
         std::string* failure_reason) = 0;
     virtual bool IsInWorld() const = 0;
+    virtual void SetInWorld(bool in_world) = 0;
     virtual std::string_view Mode() const = 0;
     virtual std::size_t RegisteredCatalogHandlerCount() const = 0;
+    virtual bool GrantCallbackRegistered() const = 0;
     virtual std::vector<std::uint32_t> PollCompletedLocations() = 0;
 };
 
@@ -63,14 +65,17 @@ public:
         ItemCategory category,
         std::string* failure_reason) override;
     bool IsInWorld() const override;
+    void SetInWorld(bool in_world) override;
     std::string_view Mode() const override;
     std::size_t RegisteredCatalogHandlerCount() const override;
+    bool GrantCallbackRegistered() const override;
     std::vector<std::uint32_t> PollCompletedLocations() override;
     std::size_t ApplyCount() const;
 
 private:
     mutable std::mutex mutex_;
     std::size_t apply_count_ = 0;
+    std::atomic<bool> in_world_{true};
 };
 
 class LiveGameBackend final : public IGameBackend {
@@ -87,6 +92,14 @@ public:
         std::uint32_t ap_location_id,
         const char* category,
         const char* game_key);
+    using GrantCallback = BOOL(WINAPI*)(
+        void* context,
+        std::uint64_t delivery_index,
+        std::uint32_t ap_item_id,
+        const char* game_key,
+        const char* display_name,
+        const char* category,
+        int count);
 
     struct Callbacks {
         void* context = nullptr;
@@ -101,19 +114,23 @@ public:
     };
 
     void SetCallbacks(const Callbacks& callbacks);
-    void SetInWorld(bool in_world);
+    void SetGrantCallback(void* context, GrantCallback callback);
     bool ApplyItem(
         const GrantRequest& request,
         ItemCategory category,
         std::string* failure_reason) override;
     bool IsInWorld() const override;
+    void SetInWorld(bool in_world) override;
     std::string_view Mode() const override;
     std::size_t RegisteredCatalogHandlerCount() const override;
+    bool GrantCallbackRegistered() const override;
     std::vector<std::uint32_t> PollCompletedLocations() override;
 
 private:
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     Callbacks callbacks_;
+    void* grant_context_ = nullptr;
+    GrantCallback grant_callback_ = nullptr;
     std::atomic<bool> in_world_{false};
 };
 
@@ -161,6 +178,7 @@ private:
     std::set<std::tuple<std::string, std::string, std::uint64_t>>
         failure_notified_;
     std::map<SessionKey, std::uint64_t> next_delivery_index_;
+    std::map<SessionKey, std::uint64_t> last_applied_index_;
     std::map<SessionKey, bool> state_loaded_;
     std::optional<SessionKey> active_session_;
     std::mutex location_mutex_;

@@ -1,0 +1,8 @@
+name: Rico
+game: Just Cause 3
+
+Just Cause 3:
+  goal: low_liberation
+  liberation_goal: 25
+  region_progression: true
+  fow_hazard_progression: true
