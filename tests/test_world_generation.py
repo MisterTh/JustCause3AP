@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import importlib
+import sys
 from argparse import Namespace
+from types import ModuleType
 
 import pytest
 from BaseClasses import CollectionState, MultiWorld
@@ -43,7 +45,7 @@ def generate_solo_world(world_type: type, seed: int) -> MultiWorld:
 
 
 @pytest.mark.parametrize("seed", [13, 37, 91])
-def test_solo_world_generates_and_all_locations_are_reachable(seed: int) -> None:
+def test_solo_world_generates_and_progression_unlocks_all_locations(seed: int) -> None:
     world_type = AutoWorldRegister.world_types[GAME_NAME]
     multiworld = generate_solo_world(world_type, seed)
     world = multiworld.worlds[1]
@@ -55,12 +57,26 @@ def test_solo_world_generates_and_all_locations_are_reachable(seed: int) -> None
     ]
     assert len(checks) == EXPECTED_CHECK_COUNT
     assert len(world.location_name_to_id) == EXPECTED_CHECK_COUNT
-    assert len(world.item_name_to_id) == 88
+    assert len(world.item_name_to_id) == 91
+    assert {
+        "Wingsuit Progression",
+        "Tether Progression",
+        "FOW Hazard Disabler",
+    } <= set(world.item_name_to_id)
     assert len(multiworld.itempool) == len(multiworld.get_unfilled_locations())
 
     state = CollectionState(multiworld)
-    unreachable = [location.name for location in checks if not location.can_reach(state)]
-    assert not unreachable, f"Locations unreachable without items: {unreachable}"
+    initially_reachable = [
+        location for location in checks if location.can_reach(state)
+    ]
+    assert initially_reachable, "The empty state should reach Medici locations."
+    for item in multiworld.itempool:
+        if item.advancement:
+            state.collect(item)
+    unreachable = [
+        location.name for location in checks if not location.can_reach(state)
+    ]
+    assert not unreachable, f"Locations unreachable with all progression: {unreachable}"
 
     distribute_items_restrictive(multiworld)
     call_all(multiworld, "post_fill")
@@ -80,12 +96,14 @@ def test_solo_world_generates_and_all_locations_are_reachable(seed: int) -> None
     assert multiworld.can_beat_game(state)
 
 
-def test_world_has_no_unimplemented_option_fields() -> None:
+def test_world_declares_supported_option_fields() -> None:
     world_type = AutoWorldRegister.world_types[GAME_NAME]
-    assert not world_type.options_dataclass.__annotations__, (
-        "If JC3 options are added, add named generation presets and logic tests "
-        "for every option combination here."
-    )
+    assert set(world_type.options_dataclass.__annotations__) == {
+        "goal",
+        "liberation_goal",
+        "region_progression",
+        "fow_hazard_progression",
+    }
 
 
 def test_client_launcher_registration_and_argument_forwarding(monkeypatch) -> None:
@@ -103,8 +121,17 @@ def test_client_launcher_registration_and_argument_forwarding(monkeypatch) -> No
 
     forwarded = ("--connect", "archipelago.gg:38281", "--name", "TestPlayer")
     captured = {}
-    monkeypatch.setattr(
-        world_module,
+    assert component.func is not None
+    assert component.func.__module__ == world_module.__name__
+    client_module = ModuleType("worlds.justcause3.Client")
+
+    def client_launch(*args: str) -> None:
+        pass
+
+    client_module.launch = client_launch
+    monkeypatch.setitem(sys.modules, client_module.__name__, client_module)
+    monkeypatch.setitem(
+        component.func.__globals__,
         "launch_subprocess",
         lambda func, name=None, args=(): captured.update(
             func=func, name=name, args=args
@@ -112,6 +139,6 @@ def test_client_launcher_registration_and_argument_forwarding(monkeypatch) -> No
     )
     component.func(*forwarded)
 
-    assert captured["func"].__module__ == "worlds.justcause3.Client"
+    assert captured["func"] is client_launch
     assert captured["name"] == "Just Cause 3 Client"
     assert captured["args"] == forwarded
